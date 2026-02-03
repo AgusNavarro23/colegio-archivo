@@ -189,7 +189,7 @@ export function EmployeeDashboard() {
                 size="sm"
                 onClick={() => {
                   useAuthStore.getState().logout();
-                  window.location.href = '/login';
+                  window.location.href = '/';
                 }}
               >
                 <LogOut className="w-4 h-4 mr-2" />

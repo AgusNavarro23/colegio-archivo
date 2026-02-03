@@ -13,9 +13,13 @@ function verifyToken(token: string) {
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  // CORRECCIÓN 1: Tipar params como Promise
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    // CORRECCIÓN 2: Esperar a que se resuelvan los parámetros
+    const { id } = await params;
+
     const authHeader = request.headers.get('authorization');
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
       return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
@@ -28,11 +32,13 @@ export async function POST(
       return NextResponse.json({ error: 'Token inválido' }, { status: 401 });
     }
 
-    // Generar ID de transacción ficticio
-    const transactionId = `TXN-${Date.now()}-${Math.random().toString(36).substr(2, 9).toUpperCase()}`;
+    // CORRECCIÓN 3: Simulación de ID de Macro Click
+    // En una integración real, aquí iniciarías la sesión de pago con la API de Banco Macro
+    const transactionId = `MACRO-${Date.now()}-${Math.random().toString(36).substr(2, 9).toUpperCase()}`;
 
+    // Actualizamos la solicitud usando el 'id' extraído correctamente
     const updatedRequest = await db.request.update({
-      where: { id: params.id },
+      where: { id }, // Usamos la variable id, no params.id
       data: { status: 'PAID', transactionId },
       include: { user: { select: { email: true, name: true } } },
     });
@@ -40,6 +46,13 @@ export async function POST(
     return NextResponse.json(updatedRequest);
   } catch (error) {
     console.error('Pay request error:', error);
+    
+    // Captura si el ID no existe
+    // @ts-ignore
+    if (error.code === 'P2025') {
+       return NextResponse.json({ error: 'Solicitud no encontrada' }, { status: 404 });
+    }
+
     return NextResponse.json({ error: 'Error al procesar pago' }, { status: 500 });
   }
 }

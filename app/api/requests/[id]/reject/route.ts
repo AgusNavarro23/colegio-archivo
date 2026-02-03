@@ -18,9 +18,13 @@ function verifyToken(token: string) {
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  // CORRECCIÓN: Tipar params como Promise y esperar su resolución
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    // 1. Esperamos a que los params se resuelvan (Requerido en Next.js 15)
+    const { id } = await params;
+
     const authHeader = request.headers.get('authorization');
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
       return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
@@ -36,8 +40,9 @@ export async function POST(
     const body = await request.json();
     const { reason } = rejectSchema.parse(body);
 
+    // 2. Usamos el id extraído
     const updatedRequest = await db.request.update({
-      where: { id: params.id },
+      where: { id }, 
       data: { status: 'REJECTED', rejectionReason: reason },
       include: { user: { select: { email: true, name: true } } },
     });
@@ -51,6 +56,12 @@ export async function POST(
         { error: error.issues[0].message },
         { status: 400 }
       );
+    }
+    
+    // Captura el error específico de registro no encontrado
+    // @ts-ignore
+    if (error.code === 'P2025') {
+       return NextResponse.json({ error: 'Solicitud no encontrada' }, { status: 404 });
     }
 
     return NextResponse.json({ error: 'Error al rechazar solicitud' }, { status: 500 });

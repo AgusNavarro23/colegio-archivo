@@ -39,7 +39,6 @@ export function LoginForm() {
       });
 
       // Recargar la página para redirigir al dashboard correspondiente
-      window.location.reload();
     } catch (error) {
       toast({
         title: 'Error',

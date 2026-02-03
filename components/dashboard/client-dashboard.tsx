@@ -7,7 +7,6 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from '@/hooks/use-toast';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -16,6 +15,7 @@ import { Plus, Download, CreditCard, Loader2, Scale, FileText, CheckCircle2, XCi
 
 interface Request {
   id: string;
+  // Campos visuales
   title: string;
   description: string;
   requestType: string;
@@ -23,6 +23,11 @@ interface Request {
   rejectionReason?: string;
   transactionId?: string;
   createdAt: string;
+  // Nuevos campos específicos
+  deedNumber?: string;
+  year?: string;
+  notary?: string;
+  parties?: string;
 }
 
 export function ClientDashboard() {
@@ -32,10 +37,14 @@ export function ClientDashboard() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isPaying, setIsPaying] = useState(false);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+
+  // Estado del formulario con los nuevos campos
   const [formData, setFormData] = useState({
-    title: '',
-    description: '',
-    requestType: 'Escritura Pública',
+    requestType: 'Copia de Entrada',
+    deedNumber: '',
+    year: new Date().getFullYear().toString(),
+    notary: '',
+    parties: '',
   });
 
   useEffect(() => {
@@ -88,7 +97,14 @@ export function ClientDashboard() {
         description: 'Tu solicitud ha sido enviada correctamente',
       });
 
-      setFormData({ title: '', description: '', requestType: 'Escritura Pública' });
+      // Resetear formulario a valores iniciales
+      setFormData({ 
+        requestType: 'Copia de Entrada',
+        deedNumber: '',
+        year: new Date().getFullYear().toString(),
+        notary: '',
+        parties: '',
+      });
       setIsDialogOpen(false);
       fetchRequests();
     } catch (error) {
@@ -270,23 +286,25 @@ export function ClientDashboard() {
                 <CardDescription>Gestiona y realiza el seguimiento de tus trámites notariales</CardDescription>
               </div>
               <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-                <DialogTrigger>
+                <DialogTrigger asChild>
                   <Button className="gap-2">
                     <Plus className="w-4 h-4" />
                     Nueva Solicitud
                   </Button>
                 </DialogTrigger>
-                <DialogContent>
+                <DialogContent className="sm:max-w-[500px]">
                   <DialogHeader>
                     <DialogTitle>Crear Nueva Solicitud</DialogTitle>
                     <DialogDescription>
-                      Completa los datos para iniciar un nuevo trámite notarial
+                      Completa los datos de la escritura para iniciar el trámite.
                     </DialogDescription>
                   </DialogHeader>
                   <form onSubmit={handleSubmitRequest}>
                     <div className="space-y-4 pt-4">
+                      
+                      {/* Campo: Tipo de Solicitud */}
                       <div className="space-y-2">
-                        <Label htmlFor="requestType">Tipo de Trámite</Label>
+                        <Label htmlFor="requestType">Tipo de Solicitud</Label>
                         <Select
                           value={formData.requestType}
                           onValueChange={(value) => setFormData({ ...formData, requestType: value })}
@@ -295,35 +313,63 @@ export function ClientDashboard() {
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent>
-                            <SelectItem value="Escritura Pública">Escritura Pública</SelectItem>
-                            <SelectItem value="Poder Notarial">Poder Notarial</SelectItem>
-                            <SelectItem value="Certificación">Certificación</SelectItem>
-                            <SelectItem value="Legalización">Legalización</SelectItem>
-                            <SelectItem value="Testamento">Testamento</SelectItem>
+                            <SelectItem value="Copia de Entrada">Copia de Entrada</SelectItem>
+                            <SelectItem value="Copia Digital">Copia Digital</SelectItem>
                           </SelectContent>
                         </Select>
                       </div>
+
+                      <div className="grid grid-cols-2 gap-4">
+                        {/* Campo: N° Escritura */}
+                        <div className="space-y-2">
+                          <Label htmlFor="deedNumber">N° Escritura</Label>
+                          <Input
+                            id="deedNumber"
+                            placeholder="Ej: 1234"
+                            value={formData.deedNumber}
+                            onChange={(e) => setFormData({ ...formData, deedNumber: e.target.value })}
+                            required
+                          />
+                        </div>
+
+                        {/* Campo: Año */}
+                        <div className="space-y-2">
+                          <Label htmlFor="year">Año</Label>
+                          <Input
+                            id="year"
+                            placeholder="Ej: 2024"
+                            type="number"
+                            value={formData.year}
+                            onChange={(e) => setFormData({ ...formData, year: e.target.value })}
+                            required
+                          />
+                        </div>
+                      </div>
+
+                      {/* Campo: Escribano */}
                       <div className="space-y-2">
-                        <Label htmlFor="title">Título</Label>
+                        <Label htmlFor="notary">Escribano</Label>
                         <Input
-                          id="title"
-                          placeholder="Ej: Compraventa Inmueble"
-                          value={formData.title}
-                          onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+                          id="notary"
+                          placeholder="Nombre del Escribano"
+                          value={formData.notary}
+                          onChange={(e) => setFormData({ ...formData, notary: e.target.value })}
                           required
                         />
                       </div>
+
+                      {/* Campo: Partes */}
                       <div className="space-y-2">
-                        <Label htmlFor="description">Descripción</Label>
-                        <Textarea
-                          id="description"
-                          placeholder="Detalles del trámite..."
-                          value={formData.description}
-                          onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                        <Label htmlFor="parties">Partes Intervinientes</Label>
+                        <Input
+                          id="parties"
+                          placeholder="Ej: Juan Pérez vs María López"
+                          value={formData.parties}
+                          onChange={(e) => setFormData({ ...formData, parties: e.target.value })}
                           required
-                          rows={4}
                         />
                       </div>
+
                       <Button type="submit" className="w-full" disabled={isSubmitting}>
                         {isSubmitting ? (
                           <>
@@ -359,7 +405,8 @@ export function ClientDashboard() {
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Trámite</TableHead>
+                      <TableHead>Trámite (N°/Año)</TableHead>
+                      <TableHead>Escribano / Partes</TableHead>
                       <TableHead>Tipo</TableHead>
                       <TableHead>Estado</TableHead>
                       <TableHead>Fecha</TableHead>
@@ -371,7 +418,9 @@ export function ClientDashboard() {
                       <TableRow key={request.id}>
                         <TableCell className="font-medium">
                           <div>
-                            <p className="font-semibold">{request.title}</p>
+                            <p className="font-semibold">
+                                {request.deedNumber ? `Escritura ${request.deedNumber} / ${request.year}` : request.title}
+                            </p>
                             {request.rejectionReason && (
                               <p className="text-xs text-red-600 mt-1">
                                 Motivo: {request.rejectionReason}
@@ -379,7 +428,15 @@ export function ClientDashboard() {
                             )}
                           </div>
                         </TableCell>
-                        <TableCell>{request.requestType}</TableCell>
+                        <TableCell>
+                           <div className="text-sm">
+                             <p className="font-medium">{request.notary || "No especificado"}</p>
+                             <p className="text-xs text-gray-500 truncate max-w-[200px]">{request.parties || request.description}</p>
+                           </div>
+                        </TableCell>
+                        <TableCell>
+                            <Badge variant="outline">{request.requestType}</Badge>
+                        </TableCell>
                         <TableCell>{getStatusBadge(request.status)}</TableCell>
                         <TableCell>
                           {new Date(request.createdAt).toLocaleDateString('es-ES', {

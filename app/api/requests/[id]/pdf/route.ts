@@ -14,9 +14,13 @@ function verifyToken(token: string) {
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  // CORRECCIÓN 1: params es ahora una Promesa
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    // CORRECCIÓN 2: Esperamos a que se resuelvan los parámetros
+    const { id } = await params;
+
     const authHeader = request.headers.get('authorization');
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
       return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
@@ -29,9 +33,9 @@ export async function GET(
       return NextResponse.json({ error: 'Token inválido' }, { status: 401 });
     }
 
-    // Obtener la solicitud
+    // Obtener la solicitud usando el ID extraído
     const requestDoc = await db.request.findUnique({
-      where: { id: params.id },
+      where: { id },
       include: { user: true },
     });
 
@@ -39,7 +43,7 @@ export async function GET(
       return NextResponse.json({ error: 'Solicitud no encontrada' }, { status: 404 });
     }
 
-    // Verificar que el usuario sea el propietario o un empleado/admin
+    // Verificar permisos
     if (
       requestDoc.userId !== decoded.userId &&
       decoded.role !== 'EMPLOYEE' &&
@@ -55,11 +59,11 @@ export async function GET(
       );
     }
 
-    // Generar PDF
+    // --- GENERACIÓN DEL PDF ---
     const doc = new jsPDF();
 
-    // Header
-    doc.setFillColor(125, 33, 63); // #7d213f
+    // Header (Color Bordó: #7d213f)
+    doc.setFillColor(125, 33, 63); 
     doc.rect(0, 0, 210, 40, 'F');
     doc.setTextColor(255, 255, 255);
     doc.setFontSize(24);
@@ -88,17 +92,36 @@ export async function GET(
       doc.text(`${label}:`, 20, yPosition);
       doc.setFont('helvetica', 'normal');
       doc.setTextColor(0, 0, 0);
-      doc.text(value, 70, yPosition);
-      yPosition += 12;
+      // Ajuste para textos largos
+      const textLines = doc.splitTextToSize(value, 120); 
+      doc.text(textLines, 70, yPosition);
+      yPosition += (textLines.length * 6) + 6; // Espacio dinámico
     };
 
     addField('ID de Trámite', requestDoc.id);
-    addField('Título', requestDoc.title);
-    addField('Tipo de Trámite', requestDoc.requestType);
-    addField('Cliente', requestDoc.user.name || 'N/A');
+    
+    // MEJORA: Mostrar los campos específicos si existen
+    // @ts-ignore (Ignoramos error de TS por si el cliente Prisma no se ha regenerado aún)
+    if (requestDoc.deedNumber) {
+        // @ts-ignore
+        addField('Escritura', `${requestDoc.deedNumber} / ${requestDoc.year || ''}`);
+    } else {
+        addField('Título', requestDoc.title);
+    }
+    
+    // @ts-ignore
+    if (requestDoc.notary) addField('Escribano', requestDoc.notary);
+    
+    // @ts-ignore
+    if (requestDoc.parties) addField('Partes', requestDoc.parties);
+
+    // @ts-ignore
+    addField('Tipo de Trámite', requestDoc.requestType || 'Trámite General');
+    
+    addField('Solicitante', requestDoc.user.name || 'N/A');
     addField('Email', requestDoc.user.email);
     addField(
-      'Fecha',
+      'Fecha de Solicitud',
       new Date(requestDoc.createdAt).toLocaleDateString('es-ES', {
         day: '2-digit',
         month: 'long',
@@ -106,19 +129,9 @@ export async function GET(
       })
     );
 
-    // Descripción
-    doc.setFont('helvetica', 'bold');
-    doc.setTextColor(125, 33, 63);
-    doc.text('Descripción:', 20, yPosition);
-    yPosition += 8;
-    doc.setFont('helvetica', 'normal');
-    doc.setTextColor(0, 0, 0);
-    const descriptionLines = doc.splitTextToSize(requestDoc.description, 170);
-    doc.text(descriptionLines, 20, yPosition);
-    yPosition += descriptionLines.length * 6 + 10;
-
-    // Estado
-    doc.setFillColor(34, 197, 94);
+    // Estado PAGADO
+    yPosition += 10;
+    doc.setFillColor(34, 197, 94); // Verde éxito
     doc.roundedRect(20, yPosition, 170, 10, 2, 2, 'F');
     doc.setTextColor(255, 255, 255);
     doc.setFont('helvetica', 'bold');
@@ -139,7 +152,7 @@ export async function GET(
     for (let i = 1; i <= pageCount; i++) {
       doc.setPage(i);
       doc.text(
-        `Página ${i} de ${pageCount} | © 2024 Notaría Digital | Documento generado automáticamente`,
+        `Página ${i} de ${pageCount} | © 2026 Colegio de Escribanos | Documento generado automáticamente`,
         105,
         285,
         { align: 'center' }
@@ -157,6 +170,12 @@ export async function GET(
     });
   } catch (error) {
     console.error('Generate PDF error:', error);
+    
+    // @ts-ignore
+    if (error.code === 'P2025') {
+       return NextResponse.json({ error: 'Solicitud no encontrada' }, { status: 404 });
+    }
+
     return NextResponse.json({ error: 'Error al generar PDF' }, { status: 500 });
   }
 }

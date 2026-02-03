@@ -31,7 +31,12 @@ model Request {
   user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   title           String
   description     String
-  requestType     String
+  // NUEVOS CAMPOS ESPECÍFICOS
+  requestType     String   @default("Copia de Entrada")
+  deedNumber      String   @default("0000")
+  year            String   @default("2024")
+  notary          String   @default("Sin especificar")
+  parties         String
   // CAMBIO 2: De RequestStatus a String (y el default entre comillas)
   status          String   @default("PENDING")
   rejectionReason String?

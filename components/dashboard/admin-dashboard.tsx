@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState,useEffect } from 'react';
 import { useAuthStore } from '@/store/auth';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -34,9 +34,9 @@ export function AdminDashboard() {
     role: 'EMPLOYEE' as 'ADMIN' | 'EMPLOYEE' | 'CLIENT',
   });
 
-  useState(() => {
-    fetchUsers();
-  });
+useEffect(() => {
+  fetchUsers();
+}, []);
 
   const fetchUsers = async () => {
     try {
@@ -141,7 +141,7 @@ export function AdminDashboard() {
                 size="sm"
                 onClick={() => {
                   useAuthStore.getState().logout();
-                  window.location.href = '/login';
+                  window.location.href = '/';
                 }}
               >
                 <LogOut className="w-4 h-4 mr-2" />
@@ -200,7 +200,7 @@ export function AdminDashboard() {
                 </CardDescription>
               </div>
               <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-                <DialogTrigger>
+                <DialogTrigger asChild>
                   <Button className="gap-2">
                     <Plus className="w-4 h-4" />
                     Crear Usuario
