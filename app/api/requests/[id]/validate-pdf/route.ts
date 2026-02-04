@@ -1,11 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import { z } from 'zod';
-
-// Esquema para validar que envíen el monto
-const approveSchema = z.object({
-  amount: z.number().min(1, 'El monto es requerido'),
-});
 
 function verifyToken(token: string) {
   try {
@@ -22,33 +16,24 @@ export async function POST(
 ) {
   try {
     const { id } = await params;
-    
-    // Validar autenticación
     const authHeader = request.headers.get('authorization');
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
-    }
+    if (!authHeader || !authHeader.startsWith('Bearer ')) return NextResponse.json({ error: '401' }, { status: 401 });
+
     const token = authHeader.substring(7);
     const decoded = verifyToken(token);
+    
+    // Solo empleados/admin pueden validar
     if (!decoded || (decoded.role !== 'ADMIN' && decoded.role !== 'EMPLOYEE')) {
       return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
     }
 
-    // Leer el body
-    const body = await request.json();
-    const { amount } = approveSchema.parse(body);
-
     const updatedRequest = await db.request.update({
       where: { id },
-      data: { 
-        status: 'APPROVED',
-        amount: amount // Guardamos el monto
-      },
+      data: { pdfValidated: true }, // Marcamos como validado
     });
 
     return NextResponse.json(updatedRequest);
   } catch (error) {
-    console.error('Approve error:', error);
-    return NextResponse.json({ error: 'Error al aprobar' }, { status: 500 });
+    return NextResponse.json({ error: 'Error' }, { status: 500 });
   }
 }

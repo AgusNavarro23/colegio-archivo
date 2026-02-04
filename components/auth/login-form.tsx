@@ -54,10 +54,10 @@ export function LoginForm() {
     <div className="min-h-screen flex items-center justify-center bg-linear-to-br from-gray-50 to-gray-100 p-4">
       <div className="w-full max-w-md">
         {/* Logo y encabezado */}
-        <div className="text-center mb-8">
-            <img  src="/logo.svg" alt="Logo" />
+        <div className="text-center mb-4">
+            <img src="/logo.svg" alt="Logo" />
         </div>
-
+    
         <Card className="shadow-xl border-2">
           <CardHeader className="space-y-1 pb-4">
             <CardTitle className="text-2xl font-bold text-center">Iniciar Sesión</CardTitle>

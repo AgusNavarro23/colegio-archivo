@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
+import MercadoPagoConfig, { Preference } from 'mercadopago';
 
-// Verificar token
+// CONFIGURACIÓN DE MERCADOPAGO
+// Pon tu ACCESS_TOKEN de prueba aquí o en variables de entorno (.env)
+const client = new MercadoPagoConfig({ accessToken: process.env.MP_ACCESS_TOKEN || 'TEST-TU-TOKEN-AQUI' });
+
 function verifyToken(token: string) {
   try {
     const decoded = Buffer.from(token, 'base64').toString('utf-8');
@@ -13,46 +17,64 @@ function verifyToken(token: string) {
 
 export async function POST(
   request: NextRequest,
-  // CORRECCIÓN 1: Tipar params como Promise
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    // CORRECCIÓN 2: Esperar a que se resuelvan los parámetros
     const { id } = await params;
 
     const authHeader = request.headers.get('authorization');
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
-    }
+    if (!authHeader || !authHeader.startsWith('Bearer ')) return NextResponse.json({ error: '401' }, { status: 401 });
 
     const token = authHeader.substring(7);
     const decoded = verifyToken(token);
+    if (!decoded) return NextResponse.json({ error: 'Token inválido' }, { status: 401 });
 
-    if (!decoded) {
-      return NextResponse.json({ error: 'Token inválido' }, { status: 401 });
+    // Buscar la solicitud para saber el monto
+    const requestItem = await db.request.findUnique({ where: { id } });
+    if (!requestItem || !requestItem.amount) {
+      return NextResponse.json({ error: 'Solicitud inválida o sin monto' }, { status: 400 });
     }
 
-    // CORRECCIÓN 3: Simulación de ID de Macro Click
-    // En una integración real, aquí iniciarías la sesión de pago con la API de Banco Macro
-    const transactionId = `MACRO-${Date.now()}-${Math.random().toString(36).substr(2, 9).toUpperCase()}`;
+    // INTENTO DE CREAR PREFERENCIA REAL (Si hay token configurado)
+    if (process.env.MP_ACCESS_TOKEN) {
+      const preference = new Preference(client);
+      const result = await preference.create({
+        body: {
+          items: [
+            {
+              id: requestItem.id,
+              title: `Trámite Notarial - ${requestItem.title}`,
+              quantity: 1,
+              unit_price: requestItem.amount,
+              currency_id: 'ARS',
+            },
+          ],
+          // URLs a donde vuelve el usuario después de pagar
+          back_urls: {
+            success: `http://localhost:3000/client?status=success&payment_id=${id}`,
+            failure: `http://localhost:3000/client?status=failure`,
+            pending: `http://localhost:3000/client?status=pending`,
+          },
+          auto_return: 'approved',
+        }
+      });
+      
+      return NextResponse.json({ url: result.init_point });
+    }
 
-    // Actualizamos la solicitud usando el 'id' extraído correctamente
-    const updatedRequest = await db.request.update({
-      where: { id }, // Usamos la variable id, no params.id
-      data: { status: 'PAID', transactionId },
-      include: { user: { select: { email: true, name: true } } },
+    // --- SIMULACIÓN (Si no tienes token de MP configurado aún) ---
+    // Simulamos que MP procesó el pago instantáneamente
+    const transactionId = `MP-${Date.now()}`;
+    await db.request.update({
+        where: { id },
+        data: { status: 'PAID', transactionId }
     });
+    
+    // Devolvemos una URL especial que el frontend detectará para recargar
+    return NextResponse.json({ url: 'SIMULATED_SUCCESS' });
 
-    return NextResponse.json(updatedRequest);
   } catch (error) {
     console.error('Pay request error:', error);
-    
-    // Captura si el ID no existe
-    // @ts-ignore
-    if (error.code === 'P2025') {
-       return NextResponse.json({ error: 'Solicitud no encontrada' }, { status: 404 });
-    }
-
     return NextResponse.json({ error: 'Error al procesar pago' }, { status: 500 });
   }
 }

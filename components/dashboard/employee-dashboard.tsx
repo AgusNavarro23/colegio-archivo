@@ -4,13 +4,14 @@ import { useState, useEffect } from 'react';
 import { useAuthStore } from '@/store/auth';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/textarea';
+import { Input } from '@/components/ui/input'; // Importamos Input
 import { Label } from '@/components/ui/label';
 import { toast } from '@/hooks/use-toast';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { Scale, FileText, CheckCircle2, XCircle, Clock, Loader2, LogOut } from 'lucide-react';
+import { Scale, FileText, CheckCircle2, XCircle, Clock, Loader2, LogOut, DollarSign, FileCheck } from 'lucide-react';
 
 interface Request {
   id: string;
@@ -24,6 +25,9 @@ interface Request {
     email: string;
   };
   createdAt: string;
+  // Nuevos campos
+  amount?: number;
+  pdfValidated: boolean;
 }
 
 export function EmployeeDashboard() {
@@ -31,9 +35,17 @@ export function EmployeeDashboard() {
   const [requests, setRequests] = useState<Request[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isProcessing, setIsProcessing] = useState(false);
+  
+  // Estados para acciones
   const [selectedRequest, setSelectedRequest] = useState<Request | null>(null);
+  
+  // Rechazo
   const [rejectReason, setRejectReason] = useState('');
   const [isRejectDialogOpen, setIsRejectDialogOpen] = useState(false);
+  
+  // Aprobación (Monto)
+  const [approveAmount, setApproveAmount] = useState('');
+  const [isApproveDialogOpen, setIsApproveDialogOpen] = useState(false);
 
   useEffect(() => {
     fetchRequests();
@@ -43,9 +55,7 @@ export function EmployeeDashboard() {
     try {
       const token = useAuthStore.getState().token;
       const response = await fetch('/api/requests/all', {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
+        headers: { Authorization: `Bearer ${token}` },
       });
 
       if (!response.ok) throw new Error('Error al cargar solicitudes');
@@ -53,44 +63,46 @@ export function EmployeeDashboard() {
       const data = await response.json();
       setRequests(data);
     } catch (error) {
-      toast({
-        title: 'Error',
-        description: 'No se pudieron cargar las solicitudes',
-        variant: 'destructive',
-      });
+      toast({ title: 'Error', description: 'No se pudieron cargar las solicitudes', variant: 'destructive' });
     } finally {
       setIsLoading(false);
     }
   };
 
-  const handleApprove = async (requestId: string) => {
+  // 1. Abrir dialogo de aprobación
+  const openApproveDialog = (request: Request) => {
+    setSelectedRequest(request);
+    setApproveAmount('');
+    setIsApproveDialogOpen(true);
+  };
+
+  // 2. Confirmar aprobación con monto
+  const handleApprove = async () => {
+    if (!selectedRequest || !approveAmount) return;
     setIsProcessing(true);
 
     try {
       const token = useAuthStore.getState().token;
-      const response = await fetch(`/api/requests/${requestId}/approve`, {
+      const response = await fetch(`/api/requests/${selectedRequest.id}/approve`, {
         method: 'POST',
         headers: {
+          'Content-Type': 'application/json',
           Authorization: `Bearer ${token}`,
         },
+        body: JSON.stringify({ amount: parseFloat(approveAmount) }), // Enviamos el monto
       });
 
       if (!response.ok) throw new Error('Error al aprobar solicitud');
 
-      toast({
-        title: 'Solicitud aprobada',
-        description: 'La solicitud ha sido aprobada correctamente',
-      });
-
+      toast({ title: 'Solicitud aprobada', description: `Monto asignado: $${approveAmount}` });
+      
+      setIsApproveDialogOpen(false);
       fetchRequests();
     } catch (error) {
-      toast({
-        title: 'Error',
-        description: 'No se pudo aprobar la solicitud',
-        variant: 'destructive',
-      });
+      toast({ title: 'Error', description: 'No se pudo aprobar la solicitud', variant: 'destructive' });
     } finally {
       setIsProcessing(false);
+      setSelectedRequest(null);
     }
   };
 
@@ -101,17 +113,9 @@ export function EmployeeDashboard() {
   };
 
   const handleReject = async () => {
-    if (!selectedRequest || !rejectReason.trim()) {
-      toast({
-        title: 'Error',
-        description: 'Debes ingresar un motivo de rechazo',
-        variant: 'destructive',
-      });
-      return;
-    }
+    if (!selectedRequest || !rejectReason.trim()) return;
 
     setIsProcessing(true);
-
     try {
       const token = useAuthStore.getState().token;
       const response = await fetch(`/api/requests/${selectedRequest.id}/reject`, {
@@ -125,39 +129,62 @@ export function EmployeeDashboard() {
 
       if (!response.ok) throw new Error('Error al rechazar solicitud');
 
-      toast({
-        title: 'Solicitud rechazada',
-        description: 'La solicitud ha sido rechazada correctamente',
-      });
+      toast({ title: 'Solicitud rechazada', description: 'La solicitud ha sido rechazada correctamente' });
 
       setIsRejectDialogOpen(false);
-      setSelectedRequest(null);
-      setRejectReason('');
       fetchRequests();
     } catch (error) {
-      toast({
-        title: 'Error',
-        description: 'No se pudo rechazar la solicitud',
-        variant: 'destructive',
+      toast({ title: 'Error', description: 'No se pudo rechazar la solicitud', variant: 'destructive' });
+    } finally {
+      setIsProcessing(false);
+      setSelectedRequest(null);
+    }
+  };
+
+  // 3. Función para Validar PDF
+  const handleValidatePDF = async (request: Request) => {
+    setIsProcessing(true);
+    try {
+      const token = useAuthStore.getState().token;
+      const response = await fetch(`/api/requests/${request.id}/validate-pdf`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
       });
+
+      if (!response.ok) throw new Error('Error al validar');
+
+      toast({ title: 'PDF Validado', description: 'El cliente ya puede descargar el documento.' });
+      fetchRequests();
+    } catch (error) {
+      toast({ title: 'Error', description: 'No se pudo validar el PDF', variant: 'destructive' });
     } finally {
       setIsProcessing(false);
     }
   };
 
-  const getStatusBadge = (status: string) => {
+  const getStatusBadge = (status: string, validated: boolean) => {
     const variants: Record<string, any> = {
-      PENDING: { variant: 'outline', icon: Clock, label: 'Pendiente', color: 'text-yellow-600' },
-      APPROVED: { variant: 'outline', icon: CheckCircle2, label: 'Aprobado', color: 'text-green-600' },
-      REJECTED: { variant: 'destructive', icon: XCircle, label: 'Rechazado', color: 'text-red-600' },
-      PAID: { variant: 'default', icon: CheckCircle2, label: 'Pagado', color: 'text-primary' },
+      PENDING: { variant: 'outline', icon: Clock, label: 'Pendiente', color: 'text-yellow-600', className: 'bg-yellow-50 border-yellow-200' },
+      APPROVED: { variant: 'outline', icon: DollarSign, label: 'Aprobado / Impago', color: 'text-blue-600', className: 'bg-blue-50 border-blue-200' },
+      REJECTED: { variant: 'destructive', icon: XCircle, label: 'Rechazado', color: 'text-white', className: '' },
+      PAID: { variant: 'default', icon: CheckCircle2, label: 'Pagado', color: 'text-primary-foreground', className: 'bg-green-600' },
     };
+
+    // Caso especial: Pagado pero falta validar
+    if (status === 'PAID' && !validated) {
+        return (
+            <Badge variant="outline" className="flex items-center gap-1 bg-orange-50 border-orange-200 text-orange-700">
+                <Clock className="w-3 h-3" />
+                <span>Pago / Validar PDF</span>
+            </Badge>
+        );
+    }
 
     const config = variants[status] || variants.PENDING;
     const Icon = config.icon;
 
     return (
-      <Badge variant={config.variant} className="flex items-center gap-1">
+      <Badge variant={config.variant} className={`flex items-center gap-1 ${config.className}`}>
         <Icon className="w-3 h-3" />
         <span className={config.color}>{config.label}</span>
       </Badge>
@@ -167,7 +194,7 @@ export function EmployeeDashboard() {
   return (
     <div className="min-h-screen bg-linear-to-br from-gray-50 to-gray-100">
       {/* Header */}
-      <header className="bg-white border-b border-gray-200 shadow-sm">
+      <header className="bg-white border-b border-gray-200 shadow-sm sticky top-0 z-10">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16">
             <div className="flex items-center gap-3">
@@ -187,6 +214,7 @@ export function EmployeeDashboard() {
               <Button
                 variant="outline"
                 size="sm"
+                className="hover:bg-red-50 hover:text-red-600 hover:border-red-200 transition-colors"
                 onClick={() => {
                   useAuthStore.getState().logout();
                   window.location.href = '/';
@@ -204,7 +232,7 @@ export function EmployeeDashboard() {
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Stats Cards */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-          <Card>
+          <Card className="hover:shadow-md transition-shadow">
             <CardHeader className="flex flex-row items-center justify-between pb-2">
               <CardTitle className="text-sm font-medium text-gray-600">Total</CardTitle>
               <FileText className="w-4 h-4 text-gray-600" />
@@ -213,43 +241,37 @@ export function EmployeeDashboard() {
               <p className="text-3xl font-bold text-gray-900">{requests.length}</p>
             </CardContent>
           </Card>
-          <Card>
+          <Card className="hover:shadow-md transition-shadow">
             <CardHeader className="flex flex-row items-center justify-between pb-2">
               <CardTitle className="text-sm font-medium text-gray-600">Pendientes</CardTitle>
               <Clock className="w-4 h-4 text-yellow-600" />
             </CardHeader>
             <CardContent>
-              <p className="text-3xl font-bold text-gray-900">
-                {requests.filter(r => r.status === 'PENDING').length}
-              </p>
+              <p className="text-3xl font-bold text-gray-900">{requests.filter(r => r.status === 'PENDING').length}</p>
             </CardContent>
           </Card>
-          <Card>
+          <Card className="hover:shadow-md transition-shadow">
             <CardHeader className="flex flex-row items-center justify-between pb-2">
               <CardTitle className="text-sm font-medium text-gray-600">Aprobados</CardTitle>
               <CheckCircle2 className="w-4 h-4 text-green-600" />
             </CardHeader>
             <CardContent>
-              <p className="text-3xl font-bold text-gray-900">
-                {requests.filter(r => r.status === 'APPROVED').length}
-              </p>
+              <p className="text-3xl font-bold text-gray-900">{requests.filter(r => r.status === 'APPROVED').length}</p>
             </CardContent>
           </Card>
-          <Card>
+          <Card className="hover:shadow-md transition-shadow">
             <CardHeader className="flex flex-row items-center justify-between pb-2">
               <CardTitle className="text-sm font-medium text-gray-600">Rechazados</CardTitle>
               <XCircle className="w-4 h-4 text-red-600" />
             </CardHeader>
             <CardContent>
-              <p className="text-3xl font-bold text-gray-900">
-                {requests.filter(r => r.status === 'REJECTED').length}
-              </p>
+              <p className="text-3xl font-bold text-gray-900">{requests.filter(r => r.status === 'REJECTED').length}</p>
             </CardContent>
           </Card>
         </div>
 
         {/* Requests Section */}
-        <Card>
+        <Card className="shadow-lg border-0">
           <CardHeader>
             <CardTitle>Bandeja de Solicitudes</CardTitle>
             <CardDescription>
@@ -274,6 +296,7 @@ export function EmployeeDashboard() {
                       <TableHead>Trámite</TableHead>
                       <TableHead>Tipo</TableHead>
                       <TableHead>Cliente</TableHead>
+                      <TableHead>Monto</TableHead>
                       <TableHead>Estado</TableHead>
                       <TableHead>Fecha</TableHead>
                       <TableHead className="text-right">Acciones</TableHead>
@@ -281,54 +304,75 @@ export function EmployeeDashboard() {
                   </TableHeader>
                   <TableBody>
                     {requests.map((request) => (
-                      <TableRow key={request.id}>
+                      <TableRow key={request.id} className="hover:bg-gray-50 transition-colors">
                         <TableCell>
                           <div>
                             <p className="font-semibold">{request.title}</p>
-                            <p className="text-sm text-gray-600 line-clamp-1">
-                              {request.description}
-                            </p>
+                            <p className="text-sm text-gray-600 line-clamp-1">{request.description}</p>
                           </div>
                         </TableCell>
-                        <TableCell>{request.requestType}</TableCell>
+                        <TableCell>
+                           <Badge variant="secondary">{request.requestType}</Badge>
+                        </TableCell>
                         <TableCell>
                           <div>
                             <p className="font-medium">{request.user.name || 'Sin nombre'}</p>
                             <p className="text-xs text-gray-600">{request.user.email}</p>
                           </div>
                         </TableCell>
-                        <TableCell>{getStatusBadge(request.status)}</TableCell>
                         <TableCell>
-                          {new Date(request.createdAt).toLocaleDateString('es-ES', {
-                            day: '2-digit',
-                            month: 'short',
-                            year: 'numeric',
-                          })}
+                            {request.amount ? `$${request.amount}` : '-'}
+                        </TableCell>
+                        <TableCell>{getStatusBadge(request.status, request.pdfValidated)}</TableCell>
+                        <TableCell>
+                          {new Date(request.createdAt).toLocaleDateString('es-ES', { day: '2-digit', month: 'short', year: 'numeric' })}
                         </TableCell>
                         <TableCell className="text-right">
-                          {request.status === 'PENDING' && (
-                            <div className="flex justify-end gap-2">
-                              <Button
-                                size="sm"
-                                onClick={() => handleApprove(request.id)}
-                                disabled={isProcessing}
-                                className="gap-1"
-                              >
-                                <CheckCircle2 className="w-3 h-3" />
-                                Aprobar
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="destructive"
-                                onClick={() => openRejectDialog(request)}
-                                disabled={isProcessing}
-                                className="gap-1"
-                              >
-                                <XCircle className="w-3 h-3" />
-                                Rechazar
-                              </Button>
-                            </div>
-                          )}
+                          <div className="flex justify-end gap-2">
+                            
+                            {/* BOTONES PENDIENTE */}
+                            {request.status === 'PENDING' && (
+                              <>
+                                <Button
+                                  size="sm"
+                                  onClick={() => openApproveDialog(request)}
+                                  disabled={isProcessing}
+                                  className="bg-green-600 hover:bg-green-700 text-white shadow-sm hover:shadow-md transition-all gap-1"
+                                >
+                                  <DollarSign className="w-3 h-3" /> Aprobar
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="destructive"
+                                  onClick={() => openRejectDialog(request)}
+                                  disabled={isProcessing}
+                                  className="shadow-sm hover:shadow-md transition-all gap-1"
+                                >
+                                  <XCircle className="w-3 h-3" /> Rechazar
+                                </Button>
+                              </>
+                            )}
+
+                            {/* BOTÓN VALIDAR PDF */}
+                            {request.status === 'PAID' && !request.pdfValidated && (
+                                <Button
+                                    size="sm"
+                                    onClick={() => handleValidatePDF(request)}
+                                    disabled={isProcessing}
+                                    className="bg-purple-600 hover:bg-purple-700 text-white shadow-sm hover:shadow-md transition-all gap-1"
+                                >
+                                    <FileCheck className="w-3 h-3" /> Validar PDF
+                                </Button>
+                            )}
+
+                             {/* ESTADO FINAL */}
+                            {request.status === 'PAID' && request.pdfValidated && (
+                                <span className="text-xs font-bold text-green-600 flex items-center">
+                                    <CheckCircle2 className="w-3 h-3 mr-1"/> Listo
+                                </span>
+                            )}
+
+                          </div>
                         </TableCell>
                       </TableRow>
                     ))}
@@ -339,6 +383,43 @@ export function EmployeeDashboard() {
           </CardContent>
         </Card>
       </main>
+
+      {/* Approve Dialog (Con Monto) */}
+      <Dialog open={isApproveDialogOpen} onOpenChange={setIsApproveDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Aprobar y Cotizar Solicitud</DialogTitle>
+            <DialogDescription>
+              Indica el monto que el cliente debe abonar para este trámite.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 pt-4">
+            <div className="space-y-2">
+              <Label htmlFor="amount">Monto ($)</Label>
+              <div className="relative">
+                <DollarSign className="absolute left-2.5 top-2.5 h-4 w-4 text-gray-500" />
+                <Input
+                  id="amount"
+                  type="number"
+                  placeholder="0.00"
+                  className="pl-9"
+                  value={approveAmount}
+                  onChange={(e) => setApproveAmount(e.target.value)}
+                  autoFocus
+                />
+              </div>
+            </div>
+            <DialogFooter>
+                <Button variant="outline" onClick={() => setIsApproveDialogOpen(false)} disabled={isProcessing}>
+                    Cancelar
+                </Button>
+                <Button onClick={handleApprove} disabled={!approveAmount || isProcessing} className="bg-green-600 hover:bg-green-700">
+                    {isProcessing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : 'Confirmar'}
+                </Button>
+            </DialogFooter>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Reject Dialog */}
       <Dialog open={isRejectDialogOpen} onOpenChange={setIsRejectDialogOpen}>
@@ -361,29 +442,14 @@ export function EmployeeDashboard() {
                 rows={4}
               />
             </div>
-            <div className="flex gap-2 justify-end">
-              <Button
-                variant="outline"
-                onClick={() => setIsRejectDialogOpen(false)}
-                disabled={isProcessing}
-              >
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setIsRejectDialogOpen(false)} disabled={isProcessing}>
                 Cancelar
               </Button>
-              <Button
-                variant="destructive"
-                onClick={handleReject}
-                disabled={isProcessing}
-              >
-                {isProcessing ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Rechazando...
-                  </>
-                ) : (
-                  'Rechazar Solicitud'
-                )}
+              <Button variant="destructive" onClick={handleReject} disabled={isProcessing}>
+                {isProcessing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : 'Rechazar Solicitud'}
               </Button>
-            </div>
+            </DialogFooter>
           </div>
         </DialogContent>
       </Dialog>

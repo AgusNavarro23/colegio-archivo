@@ -15,7 +15,6 @@ import { Plus, Download, CreditCard, Loader2, Scale, FileText, CheckCircle2, XCi
 
 interface Request {
   id: string;
-  // Campos visuales
   title: string;
   description: string;
   requestType: string;
@@ -23,11 +22,13 @@ interface Request {
   rejectionReason?: string;
   transactionId?: string;
   createdAt: string;
-  // Nuevos campos específicos
+  // Nuevos campos
   deedNumber?: string;
   year?: string;
   notary?: string;
   parties?: string;
+  amount?: number;
+  pdfValidated: boolean;
 }
 
 export function ClientDashboard() {
@@ -38,7 +39,7 @@ export function ClientDashboard() {
   const [isPaying, setIsPaying] = useState(false);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
 
-  // Estado del formulario con los nuevos campos
+  // Estado del formulario
   const [formData, setFormData] = useState({
     requestType: 'Copia de Entrada',
     deedNumber: '',
@@ -49,15 +50,21 @@ export function ClientDashboard() {
 
   useEffect(() => {
     fetchRequests();
+
+    // Detectar retorno de MercadoPago (Si implementaste MP real)
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.get('status') === 'success') {
+        toast({ title: 'Pago Exitoso', description: 'El pago se procesó correctamente.' });
+        window.history.replaceState({}, document.title, window.location.pathname);
+    }
   }, []);
 
   const fetchRequests = async () => {
     try {
       const token = useAuthStore.getState().token;
+      // Usamos el endpoint GET que devuelve las solicitudes del usuario
       const response = await fetch('/api/requests', {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
+        headers: { Authorization: `Bearer ${token}` },
       });
 
       if (!response.ok) throw new Error('Error al cargar solicitudes');
@@ -65,11 +72,7 @@ export function ClientDashboard() {
       const data = await response.json();
       setRequests(data);
     } catch (error) {
-      toast({
-        title: 'Error',
-        description: 'No se pudieron cargar las solicitudes',
-        variant: 'destructive',
-      });
+      toast({ title: 'Error', description: 'No se pudieron cargar las solicitudes', variant: 'destructive' });
     } finally {
       setIsLoading(false);
     }
@@ -78,7 +81,6 @@ export function ClientDashboard() {
   const handleSubmitRequest = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
-
     try {
       const token = useAuthStore.getState().token;
       const response = await fetch('/api/requests', {
@@ -92,12 +94,8 @@ export function ClientDashboard() {
 
       if (!response.ok) throw new Error('Error al crear solicitud');
 
-      toast({
-        title: 'Solicitud creada',
-        description: 'Tu solicitud ha sido enviada correctamente',
-      });
+      toast({ title: 'Solicitud creada', description: 'Tu solicitud ha sido enviada correctamente' });
 
-      // Resetear formulario a valores iniciales
       setFormData({ 
         requestType: 'Copia de Entrada',
         deedNumber: '',
@@ -108,11 +106,7 @@ export function ClientDashboard() {
       setIsDialogOpen(false);
       fetchRequests();
     } catch (error) {
-      toast({
-        title: 'Error',
-        description: 'No se pudo crear la solicitud',
-        variant: 'destructive',
-      });
+      toast({ title: 'Error', description: 'No se pudo crear la solicitud', variant: 'destructive' });
     } finally {
       setIsSubmitting(false);
     }
@@ -120,45 +114,37 @@ export function ClientDashboard() {
 
   const handlePay = async (requestId: string) => {
     setIsPaying(true);
-
-    // Simular proceso de pago
-    setTimeout(async () => {
-      try {
+    try {
         const token = useAuthStore.getState().token;
+        // Llamada a API que devuelve URL de pago o simulación
         const response = await fetch(`/api/requests/${requestId}/pay`, {
-          method: 'POST',
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
+            method: 'POST',
+            headers: { Authorization: `Bearer ${token}` },
         });
 
-        if (!response.ok) throw new Error('Error al procesar pago');
+        if (!response.ok) throw new Error('Error al iniciar pago');
 
-        toast({
-          title: 'Pago exitoso',
-          description: 'Tu trámite ha sido pagado correctamente',
-        });
+        const data = await response.json();
 
-        fetchRequests();
-      } catch (error) {
-        toast({
-          title: 'Error',
-          description: 'No se pudo procesar el pago',
-          variant: 'destructive',
-        });
-      } finally {
+        if (data.url === 'SIMULATED_SUCCESS') {
+            toast({ title: 'Pago Simulado Exitoso', description: 'Tu trámite ha sido pagado.' });
+            fetchRequests();
+        } else if (data.url) {
+            // Redirigir a MercadoPago
+            window.location.href = data.url;
+        }
+    } catch (error) {
+        toast({ title: 'Error', description: 'No se pudo procesar el pago', variant: 'destructive' });
+    } finally {
         setIsPaying(false);
-      }
-    }, 2000);
+    }
   };
 
   const handleDownloadPDF = async (request: Request) => {
     try {
       const token = useAuthStore.getState().token;
       const response = await fetch(`/api/requests/${request.id}/pdf`, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
+        headers: { Authorization: `Bearer ${token}` },
       });
 
       if (!response.ok) throw new Error('Error al generar PDF');
@@ -173,32 +159,25 @@ export function ClientDashboard() {
       document.body.removeChild(a);
       window.URL.revokeObjectURL(url);
 
-      toast({
-        title: 'PDF descargado',
-        description: 'El documento se ha descargado correctamente',
-      });
+      toast({ title: 'PDF descargado', description: 'El documento se ha descargado correctamente' });
     } catch (error) {
-      toast({
-        title: 'Error',
-        description: 'No se pudo generar el PDF',
-        variant: 'destructive',
-      });
+      toast({ title: 'Error', description: 'No se pudo generar el PDF', variant: 'destructive' });
     }
   };
 
   const getStatusBadge = (status: string) => {
     const variants: Record<string, any> = {
-      PENDING: { variant: 'outline', icon: Clock, label: 'Pendiente', color: 'text-yellow-600' },
-      APPROVED: { variant: 'outline', icon: CheckCircle2, label: 'Aprobado', color: 'text-green-600' },
-      REJECTED: { variant: 'destructive', icon: XCircle, label: 'Rechazado', color: 'text-red-600' },
-      PAID: { variant: 'default', icon: CheckCircle2, label: 'Pagado', color: 'text-primary' },
+      PENDING: { variant: 'outline', icon: Clock, label: 'Pendiente', color: 'text-yellow-600', className: 'bg-yellow-50 border-yellow-200' },
+      APPROVED: { variant: 'outline', icon: CheckCircle2, label: 'Aprobado', color: 'text-green-600', className: 'bg-green-50 border-green-200' },
+      REJECTED: { variant: 'destructive', icon: XCircle, label: 'Rechazado', color: 'text-white', className: '' },
+      PAID: { variant: 'default', icon: CheckCircle2, label: 'Pagado', color: 'text-primary-foreground', className: 'bg-primary' },
     };
 
     const config = variants[status] || variants.PENDING;
     const Icon = config.icon;
 
     return (
-      <Badge variant={config.variant} className="flex items-center gap-1">
+      <Badge variant={config.variant} className={`flex items-center gap-1 ${config.className}`}>
         <Icon className="w-3 h-3" />
         <span className={config.color}>{config.label}</span>
       </Badge>
@@ -208,7 +187,7 @@ export function ClientDashboard() {
   return (
     <div className="min-h-screen bg-linear-to-br from-gray-50 to-gray-100">
       {/* Header */}
-      <header className="bg-white border-b border-gray-200 shadow-sm">
+      <header className="bg-white border-b border-gray-200 shadow-sm sticky top-0 z-10">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16">
             <div className="flex items-center gap-3">
@@ -228,6 +207,7 @@ export function ClientDashboard() {
               <Button
                 variant="outline"
                 size="sm"
+                className="hover:bg-red-50 hover:text-red-600 transition-colors"
                 onClick={() => {
                   useAuthStore.getState().logout();
                   window.location.href = '/login';
@@ -244,7 +224,7 @@ export function ClientDashboard() {
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Stats Cards */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-          <Card>
+          <Card className="hover:shadow-md transition-shadow">
             <CardHeader className="flex flex-row items-center justify-between pb-2">
               <CardTitle className="text-sm font-medium text-gray-600">Total Solicitudes</CardTitle>
               <FileText className="w-4 h-4 text-gray-600" />
@@ -253,32 +233,28 @@ export function ClientDashboard() {
               <p className="text-3xl font-bold text-gray-900">{requests.length}</p>
             </CardContent>
           </Card>
-          <Card>
+          <Card className="hover:shadow-md transition-shadow">
             <CardHeader className="flex flex-row items-center justify-between pb-2">
               <CardTitle className="text-sm font-medium text-gray-600">Pendientes</CardTitle>
               <Clock className="w-4 h-4 text-yellow-600" />
             </CardHeader>
             <CardContent>
-              <p className="text-3xl font-bold text-gray-900">
-                {requests.filter(r => r.status === 'PENDING').length}
-              </p>
+              <p className="text-3xl font-bold text-gray-900">{requests.filter(r => r.status === 'PENDING').length}</p>
             </CardContent>
           </Card>
-          <Card>
+          <Card className="hover:shadow-md transition-shadow">
             <CardHeader className="flex flex-row items-center justify-between pb-2">
               <CardTitle className="text-sm font-medium text-gray-600">Completados</CardTitle>
               <CheckCircle2 className="w-4 h-4 text-green-600" />
             </CardHeader>
             <CardContent>
-              <p className="text-3xl font-bold text-gray-900">
-                {requests.filter(r => r.status === 'PAID').length}
-              </p>
+              <p className="text-3xl font-bold text-gray-900">{requests.filter(r => r.status === 'PAID').length}</p>
             </CardContent>
           </Card>
         </div>
 
         {/* Requests Section */}
-        <Card>
+        <Card className="shadow-lg border-0">
           <CardHeader>
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
               <div>
@@ -287,7 +263,7 @@ export function ClientDashboard() {
               </div>
               <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
                 <DialogTrigger asChild>
-                  <Button className="gap-2">
+                  <Button className="gap-2 bg-primary hover:bg-primary/90 shadow-md transition-all">
                     <Plus className="w-4 h-4" />
                     Nueva Solicitud
                   </Button>
@@ -302,16 +278,14 @@ export function ClientDashboard() {
                   <form onSubmit={handleSubmitRequest}>
                     <div className="space-y-4 pt-4">
                       
-                      {/* Campo: Tipo de Solicitud */}
+                      {/* Formulario */}
                       <div className="space-y-2">
                         <Label htmlFor="requestType">Tipo de Solicitud</Label>
                         <Select
                           value={formData.requestType}
                           onValueChange={(value) => setFormData({ ...formData, requestType: value })}
                         >
-                          <SelectTrigger>
-                            <SelectValue />
-                          </SelectTrigger>
+                          <SelectTrigger><SelectValue /></SelectTrigger>
                           <SelectContent>
                             <SelectItem value="Copia de Entrada">Copia de Entrada</SelectItem>
                             <SelectItem value="Copia Digital">Copia Digital</SelectItem>
@@ -320,7 +294,6 @@ export function ClientDashboard() {
                       </div>
 
                       <div className="grid grid-cols-2 gap-4">
-                        {/* Campo: N° Escritura */}
                         <div className="space-y-2">
                           <Label htmlFor="deedNumber">N° Escritura</Label>
                           <Input
@@ -331,13 +304,11 @@ export function ClientDashboard() {
                             required
                           />
                         </div>
-
-                        {/* Campo: Año */}
                         <div className="space-y-2">
                           <Label htmlFor="year">Año</Label>
                           <Input
                             id="year"
-                            placeholder="Ej: 2024"
+                            placeholder="2024"
                             type="number"
                             value={formData.year}
                             onChange={(e) => setFormData({ ...formData, year: e.target.value })}
@@ -346,7 +317,6 @@ export function ClientDashboard() {
                         </div>
                       </div>
 
-                      {/* Campo: Escribano */}
                       <div className="space-y-2">
                         <Label htmlFor="notary">Escribano</Label>
                         <Input
@@ -358,7 +328,6 @@ export function ClientDashboard() {
                         />
                       </div>
 
-                      {/* Campo: Partes */}
                       <div className="space-y-2">
                         <Label htmlFor="parties">Partes Intervinientes</Label>
                         <Input
@@ -373,12 +342,9 @@ export function ClientDashboard() {
                       <Button type="submit" className="w-full" disabled={isSubmitting}>
                         {isSubmitting ? (
                           <>
-                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                            Enviando...
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Enviando...
                           </>
-                        ) : (
-                          'Enviar Solicitud'
-                        )}
+                        ) : 'Enviar Solicitud'}
                       </Button>
                     </div>
                   </form>
@@ -395,9 +361,8 @@ export function ClientDashboard() {
               <div className="text-center py-12">
                 <FileText className="w-12 h-12 text-gray-400 mx-auto mb-4" />
                 <p className="text-gray-600 mb-4">No tienes solicitudes aún</p>
-                <Button onClick={() => setIsDialogOpen(true)}>
-                  <Plus className="w-4 h-4 mr-2" />
-                  Crear Primera Solicitud
+                <Button onClick={() => setIsDialogOpen(true)} variant="outline">
+                  <Plus className="w-4 h-4 mr-2" /> Crear Primera Solicitud
                 </Button>
               </div>
             ) : (
@@ -405,8 +370,8 @@ export function ClientDashboard() {
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Trámite (N°/Año)</TableHead>
-                      <TableHead>Escribano / Partes</TableHead>
+                      <TableHead>Trámite</TableHead>
+                      <TableHead>Detalles</TableHead>
                       <TableHead>Tipo</TableHead>
                       <TableHead>Estado</TableHead>
                       <TableHead>Fecha</TableHead>
@@ -415,16 +380,14 @@ export function ClientDashboard() {
                   </TableHeader>
                   <TableBody>
                     {requests.map((request) => (
-                      <TableRow key={request.id}>
+                      <TableRow key={request.id} className="hover:bg-gray-50 transition-colors">
                         <TableCell className="font-medium">
                           <div>
                             <p className="font-semibold">
                                 {request.deedNumber ? `Escritura ${request.deedNumber} / ${request.year}` : request.title}
                             </p>
                             {request.rejectionReason && (
-                              <p className="text-xs text-red-600 mt-1">
-                                Motivo: {request.rejectionReason}
-                              </p>
+                              <p className="text-xs text-red-600 mt-1">Motivo: {request.rejectionReason}</p>
                             )}
                           </div>
                         </TableCell>
@@ -439,34 +402,41 @@ export function ClientDashboard() {
                         </TableCell>
                         <TableCell>{getStatusBadge(request.status)}</TableCell>
                         <TableCell>
-                          {new Date(request.createdAt).toLocaleDateString('es-ES', {
-                            day: '2-digit',
-                            month: 'short',
-                            year: 'numeric',
-                          })}
+                          {new Date(request.createdAt).toLocaleDateString('es-ES', { day: '2-digit', month: 'short', year: 'numeric' })}
                         </TableCell>
                         <TableCell className="text-right">
                           <div className="flex justify-end gap-2">
+                            
+                            {/* BOTÓN PAGAR (Si está aprobado) */}
                             {request.status === 'APPROVED' && (
                               <Button
                                 size="sm"
                                 onClick={() => handlePay(request.id)}
                                 disabled={isPaying}
-                                className="gap-1"
+                                className="bg-blue-600 hover:bg-blue-700 text-white shadow-sm hover:shadow-md transition-all gap-1"
                               >
                                 <CreditCard className="w-3 h-3" />
-                                {isPaying ? 'Procesando...' : 'Pagar'}
+                                {isPaying ? 'Procesando...' : `Pagar $${request.amount}`}
                               </Button>
                             )}
-                            {request.status === 'PAID' && (
+
+                            {/* MENSAJE DE ESPERA (Pagado pero no validado) */}
+                            {request.status === 'PAID' && !request.pdfValidated && (
+                                <Badge variant="outline" className="border-orange-300 text-orange-600 bg-orange-50 h-9 px-3">
+                                    <Clock className="w-3 h-3 mr-2 animate-pulse" />
+                                    Validando PDF...
+                                </Badge>
+                            )}
+
+                            {/* BOTÓN DESCARGAR (Pagado Y Validado) */}
+                            {request.status === 'PAID' && request.pdfValidated && (
                               <Button
                                 size="sm"
                                 variant="outline"
                                 onClick={() => handleDownloadPDF(request)}
-                                className="gap-1"
+                                className="border-green-600 text-green-700 hover:bg-green-50 transition-colors gap-1"
                               >
-                                <Download className="w-3 h-3" />
-                                PDF
+                                <Download className="w-3 h-3" /> PDF
                               </Button>
                             )}
                           </div>
